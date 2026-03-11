@@ -1,44 +1,52 @@
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 import pandas as pd
-from datetime import datetime
 
 # App Configuration
 st.set_page_config(page_title="Bible Study Planner", page_icon="📖")
 
 st.title("📖 Weekly Bible Study Poll")
-st.write("Help us find the best day to meet! Please enter your name and select all days that work for you.")
+st.write("Enter your name and pick the days that work best for your schedule!")
 
-# 1. User Input Section
+# Create a connection to Google Sheets
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# 1. User Input Form
 with st.form("poll_form"):
-    name = st.text_input("Your Name", placeholder="e.g. Andrew")
+    name = st.text_input("Your Name")
     
-    st.write("### Which days are you generally available?")
+    st.write("### Which days work for you?")
     days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    # Create a dictionary of checkboxes
     selections = {day: st.checkbox(day) for day in days}
     
-    notes = st.text_area("Any specific time preferences or notes?", placeholder="e.g. After 6:30 PM is best.")
+    notes = st.text_area("Any specific time preferences?")
     
     submit = st.form_submit_button("Submit Availability")
 
 # 2. Data Handling Logic
-# For a quick DIY, we'll store data in a local CSV (Note: This resets if the app 'sleeps' 
-# unless connected to a persistent data source like a Google Sheet).
 if submit:
     if name:
+        # Prepare the new row of data
         selected_days = [day for day, checked in selections.items() if checked]
-        new_data = {
-            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        new_row = pd.DataFrame([{
             "Name": name,
-            "Available Days": ", ".join(selected_days),
+            "Days": ", ".join(selected_days),
             "Notes": notes
-        }
-        st.success(f"Got it, {name}! Your preferences have been recorded.")
-        # Logic to display a summary (In a real app, this would append to a database)
+        }])
+
+        # Fetch existing data, add new row, and update the sheet
+        existing_data = conn.read(worksheet="Sheet1")
+        updated_df = pd.concat([existing_data, new_row], ignore_index=True)
+        conn.update(worksheet="Sheet1", data=updated_df)
+        
+        st.success(f"Thanks {name}! Your preferences are saved.")
         st.balloons()
     else:
-        st.error("Please enter your name before submitting.")
+        st.warning("Please enter your name.")
 
-# 3. Results Section (Optional - can be hidden behind a password)
-st.divider()
-st.subheader("Current Group Trends")
-st.info("Once everyone responds, we'll see which days have the most 'votes' here!")
+# 3. View Current Results (Optional)
+if st.checkbox("Show who has responded so far"):
+    current_responses = conn.read(worksheet="Sheet1")
+    st.dataframe(current_responses)
+    
